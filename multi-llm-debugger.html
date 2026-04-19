@@ -1,0 +1,1925 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-LLM Debugger - Terminal Style</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <!-- Highlight.js for syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <!-- Marked.js for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        :root {
+            --bg-dark: #0f0f0f;
+            --bg-darker: #080808;
+            --bg-panel: #1a1a1a;
+            --bg-input: #2a2a2a;
+            --border-color: #333;
+            --border-light: #444;
+            --text-primary: #e0e0e0;
+            --text-secondary: #aaa;
+            --text-tertiary: #777;
+            --accent-primary: #00FFC8;
+            --accent-secondary: #FF9D00;
+            --accent-danger: #FF4757;
+            --accent-success: #00D26A;
+            --font-ui: 'Syne', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+            --panel-width: calc(100% / 3);
+            --header-height: 60px;
+            --input-height: 160px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-ui);
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                repeating-linear-gradient(
+                    0deg,
+                    transparent,
+                    transparent 1px,
+                    rgba(255, 255, 255, 0.01) 1px,
+                    rgba(255, 255, 255, 0.01) 2px
+                );
+            pointer-events: none;
+            opacity: 0.2;
+            z-index: -1;
+        }
+
+        /* Global Config Bar */
+        .global-config {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: var(--header-height);
+            background: var(--bg-darker);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0 20px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            z-index: 100;
+        }
+
+        .config-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .config-label {
+            font-size: 12px;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .config-input {
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 8px 12px;
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            font-size: 13px;
+            min-width: 300px;
+        }
+
+        .config-input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 1px rgba(0, 255, 200, 0.1);
+        }
+
+        .btn {
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 8px 16px;
+            color: var(--text-primary);
+            font-family: var(--font-ui);
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn:hover {
+            border-color: var(--accent-primary);
+            color: var(--accent-primary);
+        }
+
+        .btn-primary {
+            background: var(--accent-primary);
+            border-color: var(--accent-primary);
+            color: #000;
+        }
+
+        .btn-primary:hover {
+            background: rgba(0, 255, 200, 0.9);
+            color: #000;
+        }
+
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--accent-danger);
+        }
+
+        .status-indicator.connected {
+            background: var(--accent-success);
+        }
+
+        /* Panels Container */
+        .panels-container {
+            position: fixed;
+            top: var(--header-height);
+            bottom: var(--input-height);
+            left: 0;
+            right: 0;
+            display: flex;
+            overflow: hidden;
+        }
+
+        .panel {
+            flex: 1;
+            background: var(--bg-panel);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+            min-width: 300px;
+        }
+
+        .panel:last-child {
+            border-right: none;
+        }
+
+        /* Panel Header */
+        .panel-header {
+            padding: 12px 16px;
+            background: var(--bg-darker);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .model-selector {
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 6px 10px;
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            font-size: 13px;
+            min-width: 200px;
+        }
+
+        .panel-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-icon {
+            width: 32px;
+            height: 32px;
+            padding: 6px;
+            border-radius: 4px;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-icon:hover {
+            border-color: var(--accent-primary);
+            color: var(--accent-primary);
+        }
+
+        /* Parameters Panel */
+        .parameters-panel {
+            background: var(--bg-darker);
+            border-bottom: 1px solid var(--border-color);
+            padding: 16px;
+            display: none;
+        }
+
+        .parameters-panel.expanded {
+            display: block;
+        }
+
+        .params-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 12px;
+        }
+
+        .param-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .param-label {
+            font-size: 11px;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .param-input {
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 6px 10px;
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            font-size: 12px;
+        }
+
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .slider {
+            flex: 1;
+            -webkit-appearance: none;
+            height: 4px;
+            background: var(--border-color);
+            border-radius: 2px;
+            outline: none;
+        }
+
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--accent-primary);
+            cursor: pointer;
+        }
+
+        /* Messages Area */
+        .messages-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message {
+            max-width: 90%;
+            padding: 12px 16px;
+            border-radius: 8px;
+            position: relative;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message-user {
+            align-self: flex-end;
+            background: rgba(0, 255, 200, 0.1);
+            border: 1px solid rgba(0, 255, 200, 0.2);
+        }
+
+        .message-assistant {
+            align-self: flex-start;
+            background: rgba(42, 42, 42, 0.5);
+            border: 1px solid var(--border-color);
+        }
+
+        .message-system {
+            align-self: center;
+            background: rgba(255, 157, 0, 0.1);
+            border: 1px solid rgba(255, 157, 0, 0.2);
+            font-size: 12px;
+            padding: 8px 12px;
+        }
+
+        .message-content {
+            font-family: var(--font-mono);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .thinking-content {
+            background: rgba(255, 157, 0, 0.1);
+            border: 1px solid rgba(255, 157, 0, 0.2);
+            border-radius: 4px;
+            padding: 8px;
+            margin-top: 8px;
+            font-size: 12px;
+            line-height: 1.4;
+            color: var(--accent-secondary);
+        }
+
+        .metadata-bar {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid var(--border-light);
+            font-size: 11px;
+            color: var(--text-tertiary);
+            display: flex;
+            gap: 12px;
+        }
+
+        .metadata-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* Global Input Area */
+        .global-input {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: var(--input-height);
+            background: var(--bg-darker);
+            border-top: 1px solid var(--border-color);
+            padding: 16px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .input-container {
+            flex: 1;
+            display: flex;
+            gap: 12px;
+        }
+
+        .message-input {
+            flex: 1;
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 12px;
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            font-size: 13px;
+            resize: none;
+            outline: none;
+        }
+
+        .message-input:focus {
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 1px rgba(0, 255, 200, 0.1);
+        }
+
+        .input-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        /* Modal */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            display: none;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--bg-darker);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            width: 90%;
+            max-width: 800px;
+            height: 80%;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .modal-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        
+
+        .modal-body {
+            flex: 1;
+            padding: 16px;
+            overflow: auto;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        /* Loading and Empty States */
+        .loading {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .empty-state {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: var(--text-tertiary);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .panels-container {
+                flex-direction: column;
+            }
+            
+            .panel {
+                min-height: 300px;
+                border-right: none;
+                border-bottom: 1px solid var(--border-color);
+            }
+            
+            .config-group {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .config-input {
+                min-width: 200px;
+            }
+        }
+
+        /* Tooltip */
+        .tooltip {
+            position: relative;
+            display: inline-block;
+            cursor: help;
+        }
+
+        .tooltip::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 8px 12px;
+            font-size: 12px;
+            border-radius: 4px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+            z-index: 1000;
+        }
+
+        .tooltip:hover::after {
+            opacity: 1;
+        }
+        
+        /* Special styles for thinking content */
+        .thinking-content {
+            background: rgba(255, 157, 0, 0.05);
+            border: 1px solid rgba(255, 157, 0, 0.2);
+            border-radius: 4px;
+            padding: 8px;
+            margin: 8px 0;
+        }
+        
+        /* Highlight thinking code blocks */
+        pre code.language-thinking,
+        pre code[class*="thinking"] {
+            background: rgba(255, 157, 0, 0.1) !important;
+            border-left: 3px solid var(--accent-secondary) !important;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        
+        /* Make sure thinking code blocks are clearly visible */
+        pre.language-thinking,
+        pre[class*="thinking"] {
+            background: rgba(255, 157, 0, 0.05) !important;
+            border: 1px solid rgba(255, 157, 0, 0.2) !important;
+        }
+        
+        /* Style for the reasoning header */
+        .reasoning-header {
+            color: var(--accent-secondary);
+            font-weight: 600;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .reasoning-header::before {
+            content: '💭';
+        }
+    </style>
+</head>
+<body>
+    <!-- Global Config Bar -->
+    <div class="global-config">
+        <div class="config-group">
+            <span class="config-label">Base URL</span>
+            <input type="text" id="baseUrl" class="config-input" value="https://api.openai.com/v1">
+        </div>
+        <div class="config-group">
+            <span class="config-label">API Key</span>
+            <input type="password" id="apiKey" class="config-input" placeholder="sk-...">
+            <button id="toggleKey" class="btn">👁</button>
+        </div>
+        <button id="fetchModels" class="btn-primary">
+            <span>📥</span>
+            <span>获取模型列表</span>
+        </button>
+        <div class="config-group">
+            <span class="config-label">状态</span>
+            <div class="status-indicator" id="statusIndicator"></div>
+        </div>
+        <button id="addPanel" class="btn">
+            <span>+</span>
+            <span>添加窗口</span>
+        </button>
+        <div class="config-group">
+            <label class="switch" style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" id="debugMode">
+                <span style="font-size: 12px;">调试模式</span>
+            </label>
+        </div>
+    </div>
+
+    <!-- Panels Container -->
+    <div class="panels-container" id="panelsContainer">
+        <!-- Panels will be dynamically added here -->
+    </div>
+
+    <!-- Global Input Area -->
+    <div class="global-input">
+        <div class="input-container">
+            <textarea 
+                id="messageInput" 
+                class="message-input" 
+                placeholder="输入消息 (Shift+Enter 换行，Enter 发送)"
+                rows="3"
+            ></textarea>
+            <div class="input-actions">
+                <button id="sendMessage" class="btn btn-primary">发送</button>
+            </div>
+        </div>
+        <div class="input-actions">
+            <button id="clearAll" class="btn">🗑 清空所有对话</button>
+        </div>
+    </div>
+
+    <!-- Request/Response Modal -->
+    <div class="modal" id="requestModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>请求/响应查看器</h3>
+                <button class="btn-icon" id="closeModal">×</button>
+            </div>
+            <div class="modal-body">
+                <pre><code id="jsonViewer">{}</code></pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Core application state and functionality
+        const app = {
+            baseUrl: 'https://api.openai.com/v1',
+            apiKey: '',
+            models: [],
+            panels: [],
+            currentModalData: null,
+            abortControllers: new Map(),
+            debugMode: false
+        };
+        
+        // Debug logging function
+        function debugLog(...args) {
+            if (app.debugMode) {
+                console.log('[DEBUG]', ...args);
+            }
+        }
+
+        // DOM elements
+        const baseUrlInput = document.getElementById('baseUrl');
+        const apiKeyInput = document.getElementById('apiKey');
+        const toggleKeyBtn = document.getElementById('toggleKey');
+        const fetchModelsBtn = document.getElementById('fetchModels');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const addPanelBtn = document.getElementById('addPanel');
+        const debugModeInput = document.getElementById('debugMode');
+        const panelsContainer = document.getElementById('panelsContainer');
+        const messageInput = document.getElementById('messageInput');
+        const sendMessageBtn = document.getElementById('sendMessage');
+        const clearAllBtn = document.getElementById('clearAll');
+        const requestModal = document.getElementById('requestModal');
+        const closeModalBtn = document.getElementById('closeModal');
+        const jsonViewer = document.getElementById('jsonViewer');
+
+        // Initialize
+        function init() {
+            loadFromLocalStorage();
+            createPanel();
+            setupEventListeners();
+        }
+
+        // Load data from localStorage
+        function loadFromLocalStorage() {
+            const savedBaseUrl = localStorage.getItem('multi-llm-baseUrl');
+            const savedApiKey = localStorage.getItem('multi-llm-apiKey');
+            
+            if (savedBaseUrl) {
+                baseUrlInput.value = savedBaseUrl;
+                app.baseUrl = savedBaseUrl;
+            }
+            
+            if (savedApiKey) {
+                apiKeyInput.value = savedApiKey;
+                app.apiKey = savedApiKey;
+            }
+        }
+
+        // Save data to localStorage
+        function saveToLocalStorage() {
+            localStorage.setItem('multi-llm-baseUrl', app.baseUrl);
+            localStorage.setItem('multi-llm-apiKey', app.apiKey);
+        }
+
+        // Setup event listeners
+        function setupEventListeners() {
+            // Base URL input
+            baseUrlInput.addEventListener('change', () => {
+                app.baseUrl = baseUrlInput.value.trim();
+                saveToLocalStorage();
+            });
+
+            // API Key input
+            apiKeyInput.addEventListener('change', () => {
+                app.apiKey = apiKeyInput.value.trim();
+                saveToLocalStorage();
+            });
+
+            // Toggle key visibility
+            toggleKeyBtn.addEventListener('click', () => {
+                const type = apiKeyInput.type === 'password' ? 'text' : 'password';
+                apiKeyInput.type = type;
+                toggleKeyBtn.textContent = type === 'password' ? '👁' : '🙈';
+            });
+
+            // Fetch models button
+            fetchModelsBtn.addEventListener('click', fetchModels);
+
+            // Add panel button
+            addPanelBtn.addEventListener('click', () => {
+                if (app.panels.length < 3) {
+                    createPanel();
+                }
+            });
+
+            // Debug mode toggle
+            debugModeInput.addEventListener('change', () => {
+                app.debugMode = debugModeInput.checked;
+                debugLog('调试模式:', app.debugMode ? '开启' : '关闭');
+            });
+
+            // Message input
+            messageInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessageToAllPanels();
+                }
+            });
+
+            // Send message button
+            sendMessageBtn.addEventListener('click', sendMessageToAllPanels);
+
+            // Clear all button
+            clearAllBtn.addEventListener('click', () => {
+                if (confirm('确定要清空所有对话吗？')) {
+                    app.panels.forEach(panel => {
+                        panel.messages = [];
+                        updateMessages(panel.id);
+                    });
+                }
+            });
+
+            // Modal
+            closeModalBtn.addEventListener('click', () => {
+                requestModal.classList.remove('active');
+            });
+
+            
+
+            // Close modal on outside click
+            requestModal.addEventListener('click', (e) => {
+                if (e.target === requestModal) {
+                    requestModal.classList.remove('active');
+                }
+            });
+        }
+
+        // Create a new panel
+        function createPanel() {
+            const panelId = `panel-${Date.now()}`;
+            const panel = {
+                id: panelId,
+                model: (app.models[0] && app.models[0].id) || '',
+                messages: [],
+                params: {
+                    max_tokens: 2048,
+                    temperature: 0.7,
+                    top_p: 1.0,
+                    context_turns: 10,
+                    include_reasoning: false,
+                    thinking_budget: 1000,
+                    top_k: 40,
+                    repetition_penalty: 1.0,
+                    system_prompt: 'You are a helpful AI assistant.'
+                },
+                isParamsExpanded: false,
+                isLoading: false
+            };
+
+            app.panels.push(panel);
+
+            // Create panel DOM
+            const panelElement = document.createElement('div');
+            panelElement.className = 'panel';
+            panelElement.id = panelId;
+            panelElement.innerHTML = `
+                <div class="panel-header">
+                    <select class="model-selector" onchange="onModelChange('${panelId}', this.value)">
+                        ${app.models.map(model => 
+                            `<option value="${model}" ${model === panel.model ? 'selected' : ''}>
+                                ${model}
+                            </option>`
+                        ).join('')}
+                    </select>
+                    <div class="panel-actions">
+                        <button class="btn-icon" onclick="toggleParams('${panelId}')" title="参数配置">
+                            ⚙
+                        </button>
+                        <button class="btn-icon" onclick="closePanel('${panelId}')" title="关闭窗口">
+                            ×
+                        </button>
+                    </div>
+                </div>
+                <div class="parameters-panel" id="params-${panelId}">
+                    <div class="params-grid">
+                        <div class="param-group">
+                            <label class="param-label tooltip" data-tooltip="上下文记忆条数 (0表示无限)">
+                                <span>Context Turns</span>
+                            </label>
+                            <input type="number" class="param-input" value="${panel.params.context_turns}"
+                                   min="0" max="50" step="1"
+                                   onchange="onParamChange('${panelId}', 'context_turns', this.value)">
+                        </div>
+                        <div class="param-group">
+                            <label class="param-label tooltip" data-tooltip="开启推理思考过程">
+                                <span>Thinking</span>
+                            </label>
+                            <label class="switch" style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" ${panel.params.include_reasoning ? 'checked' : ''}
+                                       onchange="onParamChange('${panelId}', 'include_reasoning', this.checked)">
+                                <span style="font-size: 12px;">${panel.params.include_reasoning ? 'ON' : 'OFF'}</span>
+                            </label>
+                        </div>
+                        <div class="param-group" style="${panel.params.include_reasoning ? '' : 'display: none;'}" id="thinking-budget-${panelId}">
+                            <label class="param-label tooltip" data-tooltip="推理预算令牌数">
+                                <span>Thinking Budget</span>
+                            </label>
+                            <input type="number" class="param-input" value="${panel.params.thinking_budget}"
+                                   min="1" max="10000" step="100"
+                                   onchange="onParamChange('${panelId}', 'thinking_budget', this.value)">
+                        </div>
+                        <div class="param-group">
+                            <label class="param-label tooltip" data-tooltip="最大生成令牌数">
+                                <span>Max Tokens</span>
+                            </label>
+                            <input type="number" class="param-input" value="${panel.params.max_tokens}"
+                                   min="1" max="32768" step="1"
+                                   onchange="onParamChange('${panelId}', 'max_tokens', this.value)">
+                        </div>
+                        <div class="param-group">
+                            <label class="param-label tooltip" data-tooltip="温度 (0.0-2.0)">
+                                <span>Temperature</span>
+                            </label>
+                            <div class="slider-container">
+                                <input type="range" class="slider" value="${panel.params.temperature}"
+                                       min="0" max="2" step="0.1"
+                                       oninput="onSliderChange('${panelId}', 'temperature', this.value)">
+                                <input type="number" class="param-input" style="width: 60px;"
+                                       value="${panel.params.temperature}" min="0" max="2" step="0.1"
+                                       onchange="onParamChange('${panelId}', 'temperature', this.value)">
+                            </div>
+                        </div>
+                        <div class="param-group">
+                            <label class="param-label tooltip" data-tooltip="Top P (0.0-1.0)">
+                                <span>Top P</span>
+                            </label>
+                            <div class="slider-container">
+                                <input type="range" class="slider" value="${panel.params.top_p}"
+                                       min="0" max="1" step="0.01"
+                                       oninput="onSliderChange('${panelId}', 'top_p', this.value)">
+                                <input type="number" class="param-input" style="width: 60px;"
+                                       value="${panel.params.top_p}" min="0" max="1" step="0.01"
+                                       onchange="onParamChange('${panelId}', 'top_p', this.value)">
+                            </div>
+                        </div>
+                        <div class="param-group">
+                            <label class="param-label tooltip" data-tooltip="Top K (表面扩散度)">
+                                <span>Top K</span>
+                            </label>
+                            <input type="number" class="param-input" value="${panel.params.top_k}"
+                                   min="1" max="200" step="1"
+                                   onchange="onParamChange('${panelId}', 'top_k', this.value)">
+                        </div>
+                        <div class="param-group">
+                            <label class="param-label tooltip" data-tooltip="重复惩罚 (1.0-2.0)">
+                                <span>Repetition Penalty</span>
+                            </label>
+                            <div class="slider-container">
+                                <input type="range" class="slider" value="${panel.params.repetition_penalty}"
+                                       min="1" max="2" step="0.1"
+                                       oninput="onSliderChange('${panelId}', 'repetition_penalty', this.value)">
+                                <input type="number" class="param-input" style="width: 60px;"
+                                       value="${panel.params.repetition_penalty}" min="1" max="2" step="0.1"
+                                       onchange="onParamChange('${panelId}', 'repetition_penalty', this.value)">
+                            </div>
+                        </div>
+                        <div class="param-group" style="grid-column: 1 / -1;">
+                            <label class="param-label tooltip" data-tooltip="系统提示词">
+                                <span>System Prompt</span>
+                            </label>
+                            <textarea class="param-input" style="height: 60px; resize: vertical;"
+                                      onchange="onParamChange('${panelId}', 'system_prompt', this.value)"
+                            >${panel.params.system_prompt}</textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="messages-area" id="messages-${panelId}">
+                    <div class="empty-state">
+                        <div style="font-size: 16px; margin-bottom: 8px; color: var(--accent-primary);">⚡</div>
+                        <div>当前模型: <strong>${panel.model || '未选择'}</strong></div>
+                        <div style="font-size: 11px; margin-top: 4px; opacity: 0.7;">
+                            tokens: ${panel.params.max_tokens} | temp: ${panel.params.temperature}
+                        </div>
+                    </div>
+                </div>
+                ${panel.isLoading ? `
+                    <div class="loading">
+                        <div class="loading-spinner"></div>
+                    </div>
+                ` : ''}
+            `;
+
+            panelsContainer.appendChild(panelElement);
+            updatePanelLayout();
+            
+            // Initialize reasoning switch state
+            setTimeout(() => {
+                updateReasoningSwitchState(panelId);
+            }, 100);
+        }
+
+        // Update panel layout based on number of panels
+        function updatePanelLayout() {
+            const panels = document.querySelectorAll('.panel');
+            panels.forEach(panel => {
+                panel.style.flex = '1';
+            });
+        }
+
+        // Close panel
+        function closePanel(panelId) {
+            if (app.panels.length <= 1) {
+                alert('至少需要一个对话窗口');
+                return;
+            }
+
+            // Abort any ongoing request
+            if (app.abortControllers.has(panelId)) {
+                app.abortControllers.get(panelId).abort();
+                app.abortControllers.delete(panelId);
+            }
+
+            // Remove from array
+            const index = app.panels.findIndex(p => p.id === panelId);
+            if (index > -1) {
+                app.panels.splice(index, 1);
+            }
+
+            // Remove DOM element
+            const panelElement = document.getElementById(panelId);
+            if (panelElement) {
+                panelElement.remove();
+            }
+
+            updatePanelLayout();
+        }
+
+        // Toggle parameters panel
+        function toggleParams(panelId) {
+            const panel = app.panels.find(p => p.id === panelId);
+            if (!panel) return;
+
+            panel.isParamsExpanded = !panel.isParamsExpanded;
+            const paramsPanel = document.getElementById(`params-${panelId}`);
+            
+            if (paramsPanel) {
+                if (panel.isParamsExpanded) {
+                    paramsPanel.classList.add('expanded');
+                } else {
+                    paramsPanel.classList.remove('expanded');
+                }
+            }
+        }
+
+        // Update model dropdowns
+        function updateModelSelectors() {
+            app.panels.forEach(panel => {
+                const selector = document.querySelector(`#${panel.id} .model-selector`);
+                if (selector) {
+                    selector.innerHTML = app.models.map(model => 
+                        `<option value="${model.id}" ${model.id === panel.model ? 'selected' : ''} 
+                                data-supports-reasoning="${model.supportsReasoning}">
+                            ${model.id}${model.supportsReasoning ? ' 🤔' : ''}
+                        </option>`
+                    ).join('');
+
+                    if (!panel.model && app.models.length > 0) {
+                        panel.model = app.models[0].id;
+                        selector.value = app.models[0].id;
+                    }
+                    
+                    // Update reasoning switch state based on selected model
+                    updateReasoningSwitchState(panel.id);
+                }
+            });
+        }
+        
+        // Update reasoning switch state based on selected model
+        function updateReasoningSwitchState(panelId) {
+            const panel = app.panels.find(p => p.id === panelId);
+            if (!panel) return;
+            
+            const selector = document.querySelector(`#${panel.id} .model-selector`);
+            if (!selector) return;
+            
+            const selectedOption = selector.options[selector.selectedIndex];
+            const supportsReasoning = selectedOption ? 
+                selectedOption.getAttribute('data-supports-reasoning') === 'true' : false;
+            
+            // Find the reasoning switch and thinking budget input
+            const reasoningSwitch = document.querySelector(`#${panel.id} input[type="checkbox"][onchange*="include_reasoning"]`);
+            const thinkingBudgetElement = document.getElementById(`thinking-budget-${panelId}`);
+            
+            debugLog(`更新推理开关状态: 面板 ${panelId}, 模型 ${panel.model}, 支持推理: ${supportsReasoning}`);
+            
+            if (reasoningSwitch) {
+                if (supportsReasoning) {
+                    reasoningSwitch.disabled = false;
+                    reasoningSwitch.title = '此模型支持推理功能';
+                    reasoningSwitch.parentElement.style.opacity = '1';
+                } else {
+                    reasoningSwitch.disabled = true;
+                    reasoningSwitch.checked = false;
+                    reasoningSwitch.title = '此模型不支持推理功能';
+                    reasoningSwitch.parentElement.style.opacity = '0.6';
+                    
+                    // Also update panel params
+                    panel.params.include_reasoning = false;
+                    
+                    // Hide thinking budget
+                    if (thinkingBudgetElement) {
+                        thinkingBudgetElement.style.display = 'none';
+                    }
+                }
+            }
+        }
+
+        // Fetch models from API
+        async function fetchModels() {
+            if (!app.baseUrl) {
+                alert('请输入 Base URL');
+                return;
+            }
+
+            if (!app.apiKey) {
+                alert('请输入 API Key');
+                return;
+            }
+
+            const oldText = fetchModelsBtn.innerHTML;
+            fetchModelsBtn.innerHTML = '<span class="loading-spinner" style="width: 16px; height: 16px;"></span>';
+            fetchModelsBtn.disabled = true;
+
+            try {
+                const response = await fetch(`${app.baseUrl}/models`, {
+                    headers: {
+                        'Authorization': `Bearer ${app.apiKey}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                    try {
+                        const errorData = await response.text();
+                        if (errorData) {
+                            const parsedError = JSON.parse(errorData);
+                            errorMessage += ` - ${JSON.stringify(parsedError)}`;
+                        }
+                    } catch (e) {
+                        // Ignore parsing errors
+                        try {
+                            const errorText = await response.text();
+                            if (errorText) {
+                                errorMessage += ` - ${errorText.substring(0, 200)}`;
+                            }
+                        } catch (e2) {
+                            // Ignore again
+                        }
+                    }
+                    throw new Error(errorMessage);
+                }
+
+                const data = await response.json();
+                
+                // Extract model IDs from response and check if they support reasoning
+                const reasoningSupportedModels = [
+                    'deepseek-r1', 'deepseek-reasoner',
+                    'o1', 'o1-preview', 'o1-mini',
+                    'claude-3-5-sonnet', 'claude-3-5-haiku',
+                    'qwen-reasoning',
+                    'llama-reasoning'
+                ];
+                
+                if (data.data && Array.isArray(data.data)) {
+                    app.models = data.data.map(model => {
+                        const modelId = model.id;
+                        const modelName = modelId.toLowerCase();
+                        const supportsReasoning = reasoningSupportedModels.some(keyword => 
+                            modelName.includes(keyword)
+                        );
+                        return {
+                            id: modelId,
+                            supportsReasoning: supportsReasoning
+                        };
+                    }).sort((a, b) => a.id.localeCompare(b.id));
+                } else if (Array.isArray(data)) {
+                    app.models = data.map(model => {
+                        const modelId = typeof model === 'string' ? model : model.id;
+                        const modelName = modelId.toLowerCase();
+                        const supportsReasoning = reasoningSupportedModels.some(keyword => 
+                            modelName.includes(keyword)
+                        );
+                        return {
+                            id: modelId,
+                            supportsReasoning: supportsReasoning
+                        };
+                    }).sort((a, b) => a.id.localeCompare(b.id));
+                } else {
+                    throw new Error('无法解析模型列表响应格式');
+                }
+                
+                // Count how many models support reasoning
+                const reasoningModelsCount = app.models.filter(m => m.supportsReasoning).length;
+                debugLog(`获取到 ${app.models.length} 个模型，其中 ${reasoningModelsCount} 个支持推理`);
+
+                updateModelSelectors();
+                updateStatus(true);
+                alert(`成功获取 ${app.models.length} 个模型`);
+            } catch (error) {
+                console.error('获取模型失败:', error);
+                alert(`获取模型失败: ${error.message}`);
+                updateStatus(false);
+            } finally {
+                fetchModelsBtn.innerHTML = oldText;
+                fetchModelsBtn.disabled = false;
+            }
+        }
+
+        // Update connection status
+        function updateStatus(connected) {
+            if (connected) {
+                statusIndicator.classList.add('connected');
+                statusIndicator.title = '已连接';
+            } else {
+                statusIndicator.classList.remove('connected');
+                statusIndicator.title = '未连接';
+            }
+        }
+
+        // Send message to all panels
+        async function sendMessageToAllPanels() {
+            const content = messageInput.value.trim();
+            if (!content) return;
+
+            // Add user message to all panels
+            app.panels.forEach(panel => {
+                panel.messages.push({
+                    role: 'user',
+                    content: content,
+                    timestamp: Date.now()
+                });
+                updateMessages(panel.id);
+            });
+
+            // Clear input
+            messageInput.value = '';
+
+            // Send to all panels in parallel
+            const requests = app.panels.map(panel => 
+                sendToAPI(panel.id, content)
+            );
+
+            await Promise.all(requests);
+        }
+
+        // Send message to API for a specific panel
+        async function sendToAPI(panelId, userContent) {
+            const panel = app.panels.find(p => p.id === panelId);
+            if (!panel || !panel.model) {
+                alert(`面板 ${panelId} 未选择模型`);
+                return;
+            }
+
+            // Set loading state
+            panel.isLoading = true;
+            updateLoadingState(panelId, true);
+
+            // Create abort controller
+            const abortController = new AbortController();
+            app.abortControllers.set(panelId, abortController);
+
+            // Prepare messages array
+            const messages = [];
+
+            // Add system prompt if exists
+            if (panel.params.system_prompt) {
+                messages.push({
+                    role: 'system',
+                    content: panel.params.system_prompt
+                });
+            }
+
+            // Add conversation history (respecting context turns)
+            // Only include messages up to but not including the current user message
+            // The current user message will be added separately
+            const historyMessages = panel.messages.slice(0, -1); // 排除最后一条消息（当前用户消息）
+            
+            // If context_turns is 0, include all history (unlimited context)
+            // Otherwise, include only the last context_turns * 2 messages
+            let recentHistory;
+            if (panel.params.context_turns === 0) {
+                recentHistory = historyMessages;
+            } else {
+                recentHistory = historyMessages.slice(-panel.params.context_turns * 2);
+            }
+            
+            recentHistory.forEach(msg => {
+                messages.push({
+                    role: msg.role,
+                    content: msg.content
+                });
+            });
+            
+            // Add the current user message (the one we're sending now)
+            messages.push({
+                role: 'user',
+                content: userContent
+            });
+
+            // Prepare request body - use minimal parameters first
+            const requestBody = {
+                model: panel.model,
+                messages: messages,
+                max_tokens: panel.params.max_tokens,
+                temperature: panel.params.temperature,
+                stream: true
+            };
+            
+            // Add optional parameters only if they have non-default values
+            if (panel.params.top_p !== 1.0) {
+                requestBody.top_p = panel.params.top_p;
+            }
+            
+            // Some APIs don't support top_k, so we'll skip it for now
+            // if (panel.params.top_k && panel.params.top_k !== 40) {
+            //     requestBody.top_k = panel.params.top_k;
+            // }
+            
+            // frequency_penalty calculation might be wrong
+            // if (panel.params.repetition_penalty && panel.params.repetition_penalty !== 1.0) {
+            //     requestBody.frequency_penalty = panel.params.repetition_penalty - 1;
+            // }
+            
+            debugLog('发送请求体:', JSON.stringify(requestBody, null, 2));
+            
+            debugLog('发送请求体:', JSON.stringify(requestBody, null, 2));
+            
+            // Add reasoning parameter if enabled
+            if (panel.params.include_reasoning) {
+                // Check if this model likely supports reasoning
+                const modelName = panel.model.toLowerCase();
+                const reasoningSupportedModels = [
+                    'deepseek-r1', 'deepseek-reasoner', // Only R1 models support reasoning
+                    'o1', 'o1-preview', 'o1-mini',      // OpenAI o1 models
+                    'claude-3-5-sonnet', 'claude-3-5-haiku', // Claude 3.5 models
+                    'qwen-reasoning',                   // Qwen reasoning models
+                    'llama-reasoning'                   // Llama reasoning models
+                ];
+                
+                // DeepSeek-V3.2 does NOT support reasoning parameters
+                // Only DeepSeek-R1 models support reasoning
+                const supportsReasoning = reasoningSupportedModels.some(keyword => 
+                    modelName.includes(keyword)
+                );
+                
+                debugLog(`模型 ${panel.model} 支持推理: ${supportsReasoning}`);
+                
+                if (supportsReasoning) {
+                    // Different models support different reasoning parameters
+                    debugLog(`模型 ${panel.model} 支持推理，尝试添加推理参数`);
+                    
+                    // First, let's try minimal approach - just one parameter at a time
+                    // Try reasoning_effort for OpenAI o1 models
+                    if (modelName.includes('o1')) {
+                        requestBody.reasoning_effort = 'medium';
+                        debugLog(`添加 OpenAI o1 推理参数: reasoning_effort=medium`);
+                    }
+                    // Try reasoning=true for DeepSeek-R1
+                    else if (modelName.includes('deepseek-r1') || modelName.includes('deepseek-reasoner')) {
+                        requestBody.reasoning = true;
+                        debugLog(`添加 DeepSeek-R1 推理参数: reasoning=true`);
+                    }
+                    // Try thinking=true for other models
+                    else if (modelName.includes('claude') || modelName.includes('qwen') || modelName.includes('llama')) {
+                        requestBody.thinking = true;
+                        debugLog(`添加通用推理参数: thinking=true`);
+                    }
+                    
+                    // Add thinking budget if specified
+                    if (panel.params.thinking_budget && panel.params.thinking_budget > 0) {
+                        requestBody.thinking_budget = panel.params.thinking_budget;
+                        // Ensure max_tokens is sufficient for thinking + response
+                        requestBody.max_tokens = Math.max(panel.params.max_tokens, panel.params.thinking_budget + 100);
+                    }
+                } else {
+                    debugLog(`模型 ${panel.model} 不支持推理参数，跳过添加以避免错误`);
+                }
+            }
+
+            // Request start time
+            const requestStartTime = Date.now();
+            let firstTokenTime = null;
+            let completionTokens = 0;
+            let thinkingContent = '';
+
+            try {
+                const response = await fetch(`${app.baseUrl}/chat/completions`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${app.apiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody),
+                    signal: abortController.signal
+                });
+
+                if (!response.ok) {
+                    let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                    try {
+                        const errorData = await response.text();
+                        if (errorData) {
+                            const parsedError = JSON.parse(errorData);
+                            errorMessage += ` - ${JSON.stringify(parsedError)}`;
+                        }
+                    } catch (e) {
+                        // Ignore parsing errors
+                        try {
+                            const errorText = await response.text();
+                            if (errorText) {
+                                errorMessage += ` - ${errorText.substring(0, 200)}`;
+                            }
+                        } catch (e2) {
+                            // Ignore again
+                        }
+                    }
+                    throw new Error(errorMessage);
+                }
+
+                let fullResponse = '';
+                let isThinking = false;
+
+                // Start streaming
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                // Create assistant message in panel
+                const assistantMessageId = `${panelId}-${Date.now()}`;
+                panel.messages.push({
+                    id: assistantMessageId,
+                    role: 'assistant',
+                    content: '',
+                    thinking: '',
+                    requestBody: requestBody,
+                    responseData: null,
+                    metrics: {
+                        promptTokens: 0,
+                        completionTokens: 0,
+                        totalTokens: 0,
+                        tps: 0,
+                        ttft: 0,
+                        totalTime: 0
+                    }
+                });
+                
+                
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n').filter(line => line.trim() !== '');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const data = line.slice(6);
+                            if (data === '[DONE]') continue;
+
+                            try {
+                                const parsed = JSON.parse(data);
+                                
+                                // Record first token time
+                                if (!firstTokenTime && parsed.choices?.[0]?.delta?.content) {
+                                    firstTokenTime = Date.now();
+                                }
+
+                                // Update metrics
+                                if (parsed.usage) {
+                                    panel.messages[panel.messages.length - 1].metrics = {
+                                        promptTokens: parsed.usage.prompt_tokens,
+                                        completionTokens: parsed.usage.completion_tokens,
+                                        totalTokens: parsed.usage.total_tokens,
+                                        tps: parsed.usage.completion_tokens > 0 && firstTokenTime ? 
+                                            parsed.usage.completion_tokens / ((Date.now() - firstTokenTime) / 1000) : 0,
+                                        ttft: firstTokenTime - requestStartTime,
+                                        totalTime: Date.now() - requestStartTime
+                                    };
+                                }
+
+                                // Handle response content
+                                const delta = parsed.choices?.[0]?.delta;
+                                if (delta?.content) {
+                                    panel.messages[panel.messages.length - 1].content += delta.content;
+                                    fullResponse += delta.content;
+                                    completionTokens++;
+                                }
+
+                                // Handle thinking/reasoning content
+                                if (panel.params.include_reasoning) {
+                                    // Try multiple possible field names for reasoning content
+                                    const reasoningFields = ['thinking', 'reasoning', 'thought', 'reason'];
+                                    let foundReasoning = false;
+                                    
+                                    for (const field of reasoningFields) {
+                                        if (delta?.[field]) {
+                                            panel.messages[panel.messages.length - 1].thinking += delta[field];
+                                            thinkingContent += delta[field];
+                                            debugLog(`发现推理内容 (${field}字段): ${delta[field].substring(0, 50)}...`);
+                                            foundReasoning = true;
+                                            break;
+                                        }
+                                    }
+                                    
+                                    if (!foundReasoning && delta) {
+                                        debugLog('检查delta对象:', JSON.stringify(delta));
+                                    }
+                                }
+
+                                // Update only the streaming message
+                                updateStreamingMessage(panelId, assistantMessageId);
+                                
+                                // Auto-scroll to bottom
+                                const messagesArea = document.getElementById(`messages-${panelId}`);
+                                if (messagesArea) {
+                                    messagesArea.scrollTop = messagesArea.scrollHeight;
+                                }
+                            } catch (e) {
+                                console.error('解析响应失败:', e);
+                            }
+                        }
+                    }
+                }
+
+                // Complete response
+                panel.messages[panel.messages.length - 1].responseData = {
+                    choices: [{
+                        message: {
+                            role: 'assistant',
+                            content: fullResponse,
+                            ...(thinkingContent && { thinking: thinkingContent })
+                        }
+                    }]
+                };
+
+                // Final metrics
+                const totalTime = Date.now() - requestStartTime;
+                panel.messages[panel.messages.length - 1].metrics.totalTime = totalTime;
+                if (firstTokenTime) {
+                    panel.messages[panel.messages.length - 1].metrics.tps = 
+                        completionTokens / ((totalTime - (firstTokenTime - requestStartTime)) / 1000);
+                }
+
+                // Update messages to show final metrics
+                updateMessages(panel.id);
+
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    console.log('请求已取消');
+                    panel.messages.push({
+                        role: 'system',
+                        content: '请求已被用户取消',
+                        timestamp: Date.now()
+                    });
+                } else {
+                    console.error('API 请求失败:', error);
+                    panel.messages.push({
+                        role: 'system',
+                        content: `API 请求失败: ${error.message}`,
+                        timestamp: Date.now()
+                    });
+                }
+                updateMessages(panel.id);
+            } finally {
+                // Clear loading state
+                panel.isLoading = false;
+                updateLoadingState(panelId, false);
+                app.abortControllers.delete(panelId);
+            }
+        }
+
+        // Update only the streaming assistant message (for live updates)
+        function updateStreamingMessage(panelId, messageId) {
+            const panel = app.panels.find(p => p.id === panelId);
+            if (!panel) return;
+
+            const message = panel.messages.find(m => m.id === messageId);
+            if (!message || message.role !== 'assistant') return;
+
+            const messagesArea = document.getElementById(`messages-${panelId}`);
+            if (!messagesArea || panel.messages.length === 0) return;
+
+            // Find the message element
+            let messageElement = document.getElementById(`msg-${messageId}`);
+            
+            // If message element doesn't exist yet, create it
+            if (!messageElement) {
+                // Check if this is the last message in the array
+                const messageIndex = panel.messages.findIndex(m => m.id === messageId);
+                if (messageIndex === -1) return;
+                
+                // Create a minimal message element
+                const messageContainer = document.createElement('div');
+                messageContainer.className = 'message message-assistant';
+                messageContainer.id = `assistant-msg-container-${messageId}`;
+                
+                messageElement = document.createElement('div');
+                messageElement.className = 'message-content';
+                messageElement.id = `msg-${messageId}`;
+                
+                // Add blinking cursor for streaming effect
+                const cursorSpan = document.createElement('span');
+                cursorSpan.className = 'streaming-cursor';
+                cursorSpan.textContent = '▌';
+                cursorSpan.style.cssText = `
+                    display: inline-block;
+                    animation: blink 1s infinite;
+                    color: var(--accent-primary);
+                    margin-left: 2px;
+                `;
+                
+                messageContainer.appendChild(messageElement);
+                messageElement.appendChild(cursorSpan);
+                messagesArea.appendChild(messageContainer);
+                
+                // Add CSS for cursor animation if not already present
+                if (!document.querySelector('style#cursor-animation')) {
+                    const style = document.createElement('style');
+                    style.id = 'cursor-animation';
+                    style.textContent = `
+                        @keyframes blink {
+                            0%, 50% { opacity: 1; }
+                            51%, 100% { opacity: 0; }
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
+            } else {
+                // Remove cursor if content exists
+                const cursor = messageElement.querySelector('.streaming-cursor');
+                if (cursor && message.content && message.content.length > 0) {
+                    cursor.remove();
+                }
+            }
+
+            // Combine main content and thinking content for display
+            let combinedContent = '';
+            if (message.thinking && message.thinking.length > 0) {
+                // Format thinking content with proper markdown
+                const thinkingLines = message.thinking.split('\n').length;
+                combinedContent = `<div class="reasoning-header">推理过程 (${message.thinking.length} 字符, ${thinkingLines} 行)</div>\n\n\`\`\`thinking\n${message.thinking}\n\`\`\`\n\n<div class="reasoning-header" style="margin-top: 16px;">正式回答</div>\n\n${message.content || ''}`;
+            } else {
+                combinedContent = message.content || '';
+            }
+            
+            // Update only the content of this specific message
+            messageElement.innerHTML = marked.parse(combinedContent);
+            
+            // Add/remove cursor based on whether streaming is active
+            const cursor = messageElement.querySelector('.streaming-cursor');
+            if (message.content && message.content.length > 0) {
+                if (cursor) {
+                    cursor.remove();
+                }
+            } else if (!cursor) {
+                // Add cursor if content is empty
+                const cursorSpan = document.createElement('span');
+                cursorSpan.className = 'streaming-cursor';
+                cursorSpan.textContent = '▌';
+                cursorSpan.style.cssText = `
+                    display: inline-block;
+                    animation: blink 1s infinite;
+                    color: var(--accent-primary);
+                    margin-left: 2px;
+                `;
+                messageElement.appendChild(cursorSpan);
+            }
+            
+            // Update thinking content if exists
+            if (message.thinking) {
+                let thinkingElement = document.getElementById(`thinking-${messageId}`);
+                if (!thinkingElement && message.thinking.length > 0) {
+                    // Create thinking element
+                    thinkingElement = document.createElement('div');
+                    thinkingElement.className = 'thinking-content';
+                    thinkingElement.id = `thinking-${messageId}`;
+                    
+                    const messageContainer = document.getElementById(`assistant-msg-container-${messageId}`);
+                    if (messageContainer && messageElement.parentNode === messageContainer) {
+                        // Insert thinking element after message content but before metadata bar
+                        messageContainer.insertBefore(thinkingElement, messageElement.nextSibling);
+                    }
+                }
+                
+                if (thinkingElement) {
+                    thinkingElement.innerHTML = `
+                        <div style="font-weight: 600; margin-bottom: 4px; color: var(--accent-secondary);">
+                            💭 推理过程 (${message.thinking.length} 字符)
+                        </div>
+                        <div style="white-space: pre-wrap; font-size: 11px; opacity: 0.9;">
+                            ${message.thinking.substring(0, 200)}${message.thinking.length > 200 ? '...' : ''}
+                        </div>
+                    `;
+                }
+            }
+            
+            // Apply syntax highlighting to new code blocks
+            messageElement.querySelectorAll('pre code').forEach(block => {
+                hljs.highlightElement(block);
+                const wrapper = block.parentElement;
+                wrapper.style.position = 'relative';
+                if (!wrapper.querySelector('.copy-btn')) {
+                    const copyBtn = document.createElement('button');
+                    copyBtn.className = 'copy-btn';
+                    copyBtn.textContent = '📋';
+                    copyBtn.style.cssText = `
+                        position: absolute;
+                        top: 8px;
+                        right: 8px;
+                        background: rgba(0, 0, 0, 0.5);
+                        border: 1px solid var(--border-color);
+                        color: var(--text-primary);
+                        padding: 4px 8px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-size: 12px;
+                        z-index: 1;
+                    `;
+                    copyBtn.onclick = () => {
+                        navigator.clipboard.writeText(block.textContent);
+                        copyBtn.textContent = '✓';
+                        setTimeout(() => copyBtn.textContent = '📋', 2000);
+                    };
+                    wrapper.appendChild(copyBtn);
+                }
+            });
+        }
+
+        // Update messages display for a panel
+        function updateMessages(panelId) {
+            const panel = app.panels.find(p => p.id === panelId);
+            if (!panel) return;
+
+            const messagesArea = document.getElementById(`messages-${panelId}`);
+            if (!messagesArea) return;
+
+            if (panel.messages.length === 0) {
+                // Show empty state
+                messagesArea.innerHTML = `
+                    <div class="empty-state">
+                        <div style="font-size: 16px; margin-bottom: 8px; color: var(--accent-primary);">⚡</div>
+                        <div>当前模型: <strong>${panel.model || '未选择'}</strong></div>
+                        <div style="font-size: 11px; margin-top: 4px; opacity: 0.7;">
+                            tokens: ${panel.params.max_tokens} | temp: ${panel.params.temperature}
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '';
+            panel.messages.forEach(msg => {
+                const isAssistant = msg.role === 'assistant';
+                const isSystem = msg.role === 'system';
+
+                if (isAssistant) {
+                    // Render assistant message with metrics and actions
+                    const metrics = msg.metrics || {};
+                    
+                    // Combine main content and thinking content
+                    let combinedContent = '';
+                    if (msg.thinking && msg.thinking.length > 0) {
+                        // Format thinking content with proper markdown
+                        const thinkingLines = msg.thinking.split('\n').length;
+                        combinedContent = `<div class="reasoning-header">推理过程 (${msg.thinking.length} 字符, ${thinkingLines} 行)</div>\n\n\`\`\`thinking\n${msg.thinking}\n\`\`\`\n\n<div class="reasoning-header" style="margin-top: 16px;">正式回答</div>\n\n${msg.content || ''}`;
+                    } else {
+                        combinedContent = msg.content || '';
+                    }
+                    
+                    html += `
+                        <div class="message message-assistant" id="assistant-msg-container-${msg.id}">
+                            <div class="message-content" id="msg-${msg.id}">
+                                ${marked.parse(combinedContent)}
+                            </div>
+                            <div class="metadata-bar">
+                                <div class="metadata-item">
+                                    <span>Tokens:</span>
+                                    <span>${metrics.promptTokens || 0}/${metrics.completionTokens || 0}/${metrics.totalTokens || 0}</span>
+                                </div>
+                                ${metrics.tps ? `
+                                    <div class="metadata-item">
+                                        <span>TPS:</span>
+                                        <span>${metrics.tps.toFixed(1)}</span>
+                                    </div>
+                                ` : ''}
+                                ${metrics.ttft ? `
+                                    <div class="metadata-item">
+                                        <span>TTFT:</span>
+                                        <span>${metrics.ttft}ms</span>
+                                    </div>
+                                ` : ''}
+                                ${metrics.totalTime ? `
+                                    <div class="metadata-item">
+                                        <span>总耗时:</span>
+                                        <span>${(metrics.totalTime / 1000).toFixed(2)}s</span>
+                                    </div>
+                                ` : ''}
+                                <div class="metadata-item" style="margin-left: auto;">
+                                    <button class="btn-icon" style="font-size: 10px; padding: 3px 6px;"
+                                            onclick="showRequestResponse('${panelId}', '${msg.id}')">
+                                        { }
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    // Render user or system message
+                    const messageClass = isSystem ? 'message-system' : 'message-user';
+                    html += `
+                        <div class="message ${messageClass}">
+                            <div class="message-content">
+                                ${isSystem ? msg.content : marked.parse(msg.content || '')}
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+
+            messagesArea.innerHTML = html;
+
+            // Apply syntax highlighting
+            messagesArea.querySelectorAll('pre code').forEach(block => {
+                hljs.highlightElement(block);
+                const wrapper = block.parentElement;
+                wrapper.style.position = 'relative';
+                if (!wrapper.querySelector('.copy-btn')) {
+                    const copyBtn = document.createElement('button');
+                    copyBtn.className = 'copy-btn';
+                    copyBtn.textContent = '📋';
+                    copyBtn.style.cssText = `
+                        position: absolute;
+                        top: 8px;
+                        right: 8px;
+                        background: rgba(0, 0, 0, 0.5);
+                        border: 1px solid var(--border-color);
+                        color: var(--text-primary);
+                        padding: 4px 8px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-size: 12px;
+                        z-index: 1;
+                    `;
+                    copyBtn.onclick = () => {
+                        navigator.clipboard.writeText(block.textContent);
+                        copyBtn.textContent = '✓';
+                        setTimeout(() => copyBtn.textContent = '📋', 2000);
+                    };
+                    wrapper.appendChild(copyBtn);
+                }
+            });
+
+            // Auto-scroll to bottom
+            messagesArea.scrollTop = messagesArea.scrollHeight;
+        }
+
+        // Update loading state
+        function updateLoadingState(panelId, isLoading) {
+            const panelElement = document.getElementById(panelId);
+            if (!panelElement) return;
+
+            let loadingDiv = panelElement.querySelector('.loading');
+            
+            if (isLoading && !loadingDiv) {
+                loadingDiv = document.createElement('div');
+                loadingDiv.className = 'loading';
+                loadingDiv.innerHTML = '<div class="loading-spinner"></div>';
+                panelElement.appendChild(loadingDiv);
+            } else if (!isLoading && loadingDiv) {
+                loadingDiv.remove();
+            }
+        }
+
+        // Show request/response modal
+        function showRequestResponse(panelId, messageId) {
+            const panel = app.panels.find(p => p.id === panelId);
+            if (!panel) return;
+
+            const message = panel.messages.find(m => m.id === messageId);
+            if (!message) return;
+
+            // 创建合并的数据结构
+            const combinedData = {
+                request: message.requestBody,
+                response: message.responseData
+            };
+
+            jsonViewer.textContent = JSON.stringify(combinedData, null, 2);
+            hljs.highlightElement(jsonViewer);
+            requestModal.classList.add('active');
+        }
+
+        // Event handlers to expose to global scope
+        window.onModelChange = (panelId, model) => {
+            const panel = app.panels.find(p => p.id === panelId);
+            if (panel) {
+                panel.model = model;
+                debugLog(`模型改变: 面板 ${panelId} 选择模型 ${model}`);
+                updateReasoningSwitchState(panelId);
+            }
+        };
+
+        window.onParamChange = (panelId, param, value) => {
+            const panel = app.panels.find(p => p.id === panelId);
+            if (panel) {
+                panel.params[param] = value;
+                
+                // Special handling for include_reasoning parameter
+                if (param === 'include_reasoning') {
+                    const thinkingBudgetElement = document.getElementById(`thinking-budget-${panelId}`);
+                    if (thinkingBudgetElement) {
+                        thinkingBudgetElement.style.display = value ? '' : 'none';
+                    }
+                    
+                    // Update the ON/OFF text
+                    const switchText = document.querySelector(`#${panelId} .switch span[style*="font-size: 12px"]`);
+                    if (switchText) {
+                        switchText.textContent = value ? 'ON' : 'OFF';
+                    }
+                }
+            }
+        };
+
+        window.onSliderChange = (panelId, param, value) => {
+            const panel = app.panels.find(p => p.id === panelId);
+            if (panel) {
+                panel.params[param] = parseFloat(value);
+                // Update associated number input
+                const input = document.querySelector(`#${panelId} .param-input[name="${param}"]`);
+                if (input) {
+                    input.value = value;
+                }
+            }
+        };
+
+        window.toggleParams = toggleParams;
+        window.closePanel = closePanel;
+        window.showRequestResponse = showRequestResponse;
+
+        // Initialize application
+        init();
+    </script>
+</body>
+</html>
